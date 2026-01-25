@@ -48,6 +48,9 @@ export interface QuotaToastConfig {
   /** If true, only show quota for current model */
   onlyCurrentModel: boolean;
 
+  /** If true, show per-model input/output token counts for current session */
+  showSessionTokens: boolean;
+
   /** Responsive layout breakpoints */
   layout: {
     /** Default max width target for formatting */
@@ -81,6 +84,7 @@ export const DEFAULT_CONFIG: QuotaToastConfig = {
   showOnBothFail: true,
   toastDurationMs: 9000,
   onlyCurrentModel: false,
+  showSessionTokens: true,
   layout: {
     maxWidth: 50,
     narrowAt: 42,

@@ -108,16 +108,35 @@ Tier options: `free`, `pro`, `pro+`, `business`, `enterprise`
 
 All options go under `experimental.quotaToast` in `opencode.json`:
 
-| Option             | Default      | Description                                 |
-| ------------------ | ------------ | ------------------------------------------- |
-| `enabled`          | `true`       | Enable/disable plugin                       |
-| `enableToast`      | `true`       | Show popup toasts                           |
-| `enabledProviders` | `[]`         | Provider ids to query                       |
-| `minIntervalMs`    | `300000`     | Min ms between fetches (5 min)              |
-| `toastDurationMs`  | `9000`       | Toast display time                          |
-| `onlyCurrentModel` | `false`      | Only show current model's quota             |
-| `googleModels`     | `["CLAUDE"]` | Google models: `CLAUDE`, `G3PRO`, `G3FLASH` |
-| `debug`            | `false`      | Show debug info in toasts                   |
+| Option              | Default      | Description                                 |
+| ------------------- | ------------ | ------------------------------------------- |
+| `enabled`           | `true`       | Enable/disable plugin                       |
+| `enableToast`       | `true`       | Show popup toasts                           |
+| `enabledProviders`  | `[]`         | Provider ids to query                       |
+| `minIntervalMs`     | `300000`     | Min ms between fetches (5 min)              |
+| `toastDurationMs`   | `9000`       | Toast display time                          |
+| `onlyCurrentModel`  | `false`      | Only show current model's quota             |
+| `showSessionTokens` | `true`       | Show per-model input/output tokens in toast |
+| `googleModels`      | `["CLAUDE"]` | Google models: `CLAUDE`, `G3PRO`, `G3FLASH` |
+| `debug`             | `false`      | Show debug info in toasts                   |
+
+### Example Configuration
+
+Here's a complete example `opencode.json` with all common options:
+
+```jsonc
+{
+  "plugin": ["@slkiser/opencode-quota"],
+  "experimental": {
+    "quotaToast": {
+      "enabledProviders": ["copilot", "firmware"],
+      "showSessionTokens": true,
+      "minIntervalMs": 300000,
+      "toastDurationMs": 9000,
+    },
+  },
+}
+```
 
 ## Troubleshooting
 

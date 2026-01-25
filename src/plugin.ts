@@ -16,7 +16,8 @@ import { formatQuotaCommand } from "./lib/quota-command-format.js";
 import { getProviders } from "./providers/registry.js";
 import type { QuotaToastEntry, QuotaToastError } from "./lib/entries.js";
 import { tool } from "@opencode-ai/plugin";
-import { aggregateUsage } from "./lib/quota-stats.js";
+import { aggregateUsage, getSessionTokenSummary } from "./lib/quota-stats.js";
+import type { SessionTokensData } from "./lib/entries.js";
 import { formatQuotaStatsReport } from "./lib/quota-stats-format.js";
 import { buildQuotaStatusReport } from "./lib/quota-status.js";
 import { refreshGoogleTokensForAllAccounts } from "./lib/google.js";
@@ -281,7 +282,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     ].join("\n");
   }
 
-  async function fetchQuotaMessage(trigger: string): Promise<string | null> {
+  async function fetchQuotaMessage(trigger: string, sessionID?: string): Promise<string | null> {
     // Ensure we have loaded config at least once. If load fails, we keep trying
     // on subsequent triggers.
     if (!configLoaded) {
@@ -352,6 +353,23 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     const errors: QuotaToastError[] = results.flatMap((r) => r.errors);
     const attemptedAny = results.some((r) => r.attempted);
 
+    // Fetch session tokens if enabled and sessionID is available
+    let sessionTokens: SessionTokensData | undefined;
+    if (config.showSessionTokens && sessionID) {
+      try {
+        const summary = await getSessionTokenSummary(sessionID);
+        if (summary && summary.models.length > 0) {
+          sessionTokens = {
+            models: summary.models,
+            totalInput: summary.totalInput,
+            totalOutput: summary.totalOutput,
+          };
+        }
+      } catch {
+        // Ignore errors fetching session tokens - it's a nice-to-have
+      }
+    }
+
     if (entries.length > 0) {
       const formatted = formatQuotaRows({
         version: "1.0.0",
@@ -359,6 +377,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         entries,
         errors,
         style: config.toastStyle,
+        sessionTokens,
       });
 
       if (!config.debug) return formatted;
@@ -416,9 +435,9 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     }
 
     const message = config.debug
-      ? await fetchQuotaMessage(trigger)
+      ? await fetchQuotaMessage(trigger, sessionID)
       : await getOrFetchWithCacheControl(async () => {
-          const msg = await fetchQuotaMessage(trigger);
+          const msg = await fetchQuotaMessage(trigger, sessionID);
           const cache = msg ? shouldCacheToastMessage(msg) : true;
           return { message: msg, cache };
         }, config.minIntervalMs);

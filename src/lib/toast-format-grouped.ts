@@ -5,7 +5,7 @@
  * Designed to feel like a status dashboard while still respecting OpenCode toast width.
  */
 
-import type { QuotaToastEntry, QuotaToastError } from "./entries.js";
+import type { QuotaToastEntry, QuotaToastError, SessionTokensData } from "./entries.js";
 
 export type ToastGroupEntry = QuotaToastEntry & {
   /** Group id (e.g. "OpenAI (Pro)", "Antigravity (abc..gmail)") */
@@ -59,6 +59,37 @@ function splitGroupName(name: string): { group: string; label: string } {
   return { group: name, label: "" };
 }
 
+/**
+ * Format a token count with K/M suffix for compactness
+ */
+function formatTokenCount(count: number): string {
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(1)}M`;
+  }
+  if (count >= 10_000) {
+    return `${(count / 1_000).toFixed(0)}K`;
+  }
+  if (count >= 1_000) {
+    return `${(count / 1_000).toFixed(1)}K`;
+  }
+  return String(count);
+}
+
+/**
+ * Shorten model name for compact display
+ */
+function shortenModelName(name: string, maxLen: number): string {
+  if (name.length <= maxLen) return name;
+  // Remove common prefixes/suffixes
+  let s = name
+    .replace(/^antigravity-/i, "")
+    .replace(/-thinking$/i, "")
+    .replace(/-preview$/i, "");
+  if (s.length <= maxLen) return s;
+  // Truncate with ellipsis
+  return s.slice(0, maxLen - 1) + "\u2026";
+}
+
 export function formatQuotaRowsGrouped(params: {
   layout?: {
     maxWidth: number;
@@ -67,6 +98,7 @@ export function formatQuotaRowsGrouped(params: {
   };
   entries?: ToastGroupEntry[];
   errors?: QuotaToastError[];
+  sessionTokens?: SessionTokensData;
 }): string {
   const layout = params.layout ?? { maxWidth: 50, narrowAt: 42, tinyAt: 32 };
   const maxWidth = layout.maxWidth;
@@ -148,6 +180,22 @@ export function formatQuotaRowsGrouped(params: {
   for (const err of params.errors ?? []) {
     if (lines.length > 0) lines.push("");
     lines.push(`${err.label}: ${err.message}`);
+  }
+
+  // Add session token summary (if data available and non-empty)
+  if (params.sessionTokens && params.sessionTokens.models.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push("Session Tokens");
+
+    for (const model of params.sessionTokens.models) {
+      // Shorten model name for compact display
+      const shortName = shortenModelName(model.modelID, 20);
+      const inStr = formatTokenCount(model.input);
+      const outStr = formatTokenCount(model.output);
+      lines.push(
+        `  ${padRight(shortName, 20)}  ${padLeft(inStr, 6)} in  ${padLeft(outStr, 6)} out`,
+      );
+    }
   }
 
   return lines.join("\n");

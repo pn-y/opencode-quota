@@ -101,6 +101,10 @@ export async function loadConfig(
         typeof quotaToastConfig.onlyCurrentModel === "boolean"
           ? quotaToastConfig.onlyCurrentModel
           : DEFAULT_CONFIG.onlyCurrentModel,
+      showSessionTokens:
+        typeof quotaToastConfig.showSessionTokens === "boolean"
+          ? quotaToastConfig.showSessionTokens
+          : DEFAULT_CONFIG.showSessionTokens,
       layout: {
         maxWidth:
           typeof quotaToastConfig.layout?.maxWidth === "number" &&
