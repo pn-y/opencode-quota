@@ -98,7 +98,7 @@ export function formatQuotaCommand(params: {
   }
 
   const lines: string[] = [];
-  lines.push("▣ Quota");
+  lines.push("# Quota (/quota)");
 
   const barWidth = 18;
   const leftCol = 12;

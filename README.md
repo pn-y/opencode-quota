@@ -48,7 +48,7 @@ That's it. Toasts appear automatically after main agent responses.
 | `/quota_weekly`  | Token + cost report (last 7 days)           |
 | `/quota_monthly` | Token + cost report (last 30 days)          |
 | `/quota_all`     | Token + cost report (all history)           |
-| `/quota_chat`    | Token + cost report (current session only)  |
+| `/quota_session` | Token + cost report (current session only)  |
 | `/quota_status`  | Diagnostics (config, paths, pricing)        |
 
 ## Supported Providers

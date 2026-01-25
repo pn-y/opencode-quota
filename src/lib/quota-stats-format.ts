@@ -72,31 +72,51 @@ export function formatQuotaStatsReport(params: {
   topModels?: number;
   topSessions?: number;
   focusSessionID?: string;
+  /** When true, hides Window/Sessions columns and Top Sessions section (for session-only reports) */
+  sessionOnly?: boolean;
 }): string {
   const topModels = params.topModels ?? 12;
   const topSessions = params.topSessions ?? 8;
   const r = params.result;
+  const sessionOnly = params.sessionOnly ?? false;
 
   const lines: string[] = [];
 
   lines.push(`# ${params.title}`);
   lines.push("");
 
-  lines.push(
-    renderMarkdownTable({
-      headers: ["Window", "Messages", "Sessions", "Tokens", "Cost"],
-      aligns: ["left", "right", "right", "right", "right"],
-      rows: [
-        [
-          fmtWindow(r.window),
-          fmtCompact(r.totals.messageCount),
-          fmtCompact(r.totals.sessionCount),
-          fmtCompact(totalTokens(r.totals.priced) + totalTokens(r.totals.unknown)),
-          fmtUsd(r.totals.costUsd),
+  // For session-only reports, show a simpler summary without Window/Sessions columns
+  if (sessionOnly) {
+    lines.push(
+      renderMarkdownTable({
+        headers: ["Messages", "Tokens", "Cost"],
+        aligns: ["right", "right", "right"],
+        rows: [
+          [
+            fmtCompact(r.totals.messageCount),
+            fmtCompact(totalTokens(r.totals.priced) + totalTokens(r.totals.unknown)),
+            fmtUsd(r.totals.costUsd),
+          ],
         ],
-      ],
-    }),
-  );
+      }),
+    );
+  } else {
+    lines.push(
+      renderMarkdownTable({
+        headers: ["Window", "Messages", "Sessions", "Tokens", "Cost"],
+        aligns: ["left", "right", "right", "right", "right"],
+        rows: [
+          [
+            fmtWindow(r.window),
+            fmtCompact(r.totals.messageCount),
+            fmtCompact(r.totals.sessionCount),
+            fmtCompact(totalTokens(r.totals.priced) + totalTokens(r.totals.unknown)),
+            fmtUsd(r.totals.costUsd),
+          ],
+        ],
+      }),
+    );
+  }
 
   const hasAnyReasoning = r.totals.priced.reasoning > 0 || r.totals.unknown.reasoning > 0;
 
@@ -193,7 +213,8 @@ export function formatQuotaStatsReport(params: {
     );
   }
 
-  if (r.bySession.length > 0) {
+  // Skip Top Sessions for session-only reports (e.g., /quota_session)
+  if (r.bySession.length > 0 && !sessionOnly) {
     lines.push("");
     lines.push(`## Top Sessions`);
     lines.push("");

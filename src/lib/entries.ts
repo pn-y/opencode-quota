@@ -24,6 +24,20 @@ export interface QuotaToastError {
   message: string;
 }
 
+/** Per-model token summary for current session (toast display). */
+export interface SessionTokenModel {
+  modelID: string;
+  input: number;
+  output: number;
+}
+
+/** Session tokens data for toast display. */
+export interface SessionTokensData {
+  models: SessionTokenModel[];
+  totalInput: number;
+  totalOutput: number;
+}
+
 export interface QuotaProviderResult {
   /** True when provider had enough configuration to attempt a query. */
   attempted: boolean;

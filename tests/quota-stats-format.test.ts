@@ -49,8 +49,12 @@ describe("formatQuotaStatsReport (markdown)", () => {
       ],
     });
 
-    const out = formatQuotaStatsReport({ title: "Quota Daily", result: r, topModels: 99 });
-    expect(out).toContain("# Quota Daily");
+    const out = formatQuotaStatsReport({
+      title: "Quota (/quota_daily)",
+      result: r,
+      topModels: 99,
+    });
+    expect(out).toContain("# Quota (/quota_daily)");
     expect(out).toContain("## Models");
     expect(out).toContain("| Source");
     // blank separator row between sources
@@ -79,7 +83,105 @@ describe("formatQuotaStatsReport (markdown)", () => {
       ],
     });
 
-    const out = formatQuotaStatsReport({ title: "Quota Daily", result: r, topModels: 99 });
+    const out = formatQuotaStatsReport({
+      title: "Quota (/quota_daily)",
+      result: r,
+      topModels: 99,
+    });
     expect(out).not.toContain("Reasoning");
+  });
+
+  it("sessionOnly mode hides Window/Sessions columns and Top Sessions section", () => {
+    const r = makeEmptyResult({
+      totals: {
+        priced: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+        unknown: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 },
+        costUsd: 0.5,
+        messageCount: 3,
+        sessionCount: 1,
+      },
+      bySourceModel: [
+        {
+          sourceProviderID: "opencode",
+          sourceModelID: "claude-opus-4-5-high",
+          tokens: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+          costUsd: 0.5,
+          messageCount: 3,
+        },
+      ],
+      bySession: [
+        {
+          sessionID: "ses_123",
+          title: "Test Session",
+          tokens: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+          costUsd: 0.5,
+          messageCount: 3,
+        },
+      ],
+    });
+
+    const out = formatQuotaStatsReport({
+      title: "Quota (/quota_session)",
+      result: r,
+      sessionOnly: true,
+    });
+
+    // Title should be present
+    expect(out).toContain("# Quota (/quota_session)");
+
+    // Summary table should NOT have Window or Sessions columns
+    expect(out).not.toContain("| Window");
+    expect(out).not.toContain("| Sessions");
+
+    // Summary table SHOULD have Messages, Tokens, Cost columns
+    expect(out).toContain("Messages");
+    expect(out).toContain("Tokens");
+    expect(out).toContain("Cost");
+
+    // Top Sessions section should NOT be present
+    expect(out).not.toContain("## Top Sessions");
+  });
+
+  it("standard mode includes Window/Sessions columns and Top Sessions section", () => {
+    const r = makeEmptyResult({
+      totals: {
+        priced: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+        unknown: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 },
+        costUsd: 0.5,
+        messageCount: 3,
+        sessionCount: 1,
+      },
+      bySourceModel: [
+        {
+          sourceProviderID: "opencode",
+          sourceModelID: "claude-opus-4-5-high",
+          tokens: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+          costUsd: 0.5,
+          messageCount: 3,
+        },
+      ],
+      bySession: [
+        {
+          sessionID: "ses_123",
+          title: "Test Session",
+          tokens: { input: 100, output: 200, reasoning: 0, cache_read: 0, cache_write: 0 },
+          costUsd: 0.5,
+          messageCount: 3,
+        },
+      ],
+    });
+
+    const out = formatQuotaStatsReport({
+      title: "Quota (/quota_daily)",
+      result: r,
+      sessionOnly: false, // explicit false, same as omitting
+    });
+
+    // Summary table SHOULD have Window and Sessions columns
+    expect(out).toContain("Window");
+    expect(out).toContain("Sessions");
+
+    // Top Sessions section SHOULD be present
+    expect(out).toContain("## Top Sessions");
   });
 });

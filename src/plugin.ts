@@ -488,6 +488,8 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     topModels?: number;
     topSessions?: number;
     filterSessionID?: string;
+    /** When true, hides Window/Sessions columns and Top Sessions section */
+    sessionOnly?: boolean;
   }): Promise<string> {
     const result = await aggregateUsage({
       sinceMs: params.sinceMs,
@@ -500,6 +502,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
       topModels: params.topModels,
       topSessions: params.topSessions,
       focusSessionID: params.sessionID,
+      sessionOnly: params.sessionOnly,
     });
   }
 
@@ -599,8 +602,8 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         template: "/quota_today",
         description: "Token + official API cost summary for today (calendar day, local timezone).",
       };
-      cfg.command["quota_chat"] = {
-        template: "/quota_chat",
+      cfg.command["quota_session"] = {
+        template: "/quota_session",
         description: "Token + official API cost summary for current session only.",
       };
     },
@@ -653,25 +656,40 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
       const untilMs = Date.now();
       if (cmd === "quota_daily") {
         const sinceMs = untilMs - 24 * 60 * 60 * 1000;
-        const out = await buildQuotaReport({ title: "Quota Daily", sinceMs, untilMs, sessionID });
+        const out = await buildQuotaReport({
+          title: "Quota (/quota_daily)",
+          sinceMs,
+          untilMs,
+          sessionID,
+        });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
       if (cmd === "quota_weekly") {
         const sinceMs = untilMs - 7 * 24 * 60 * 60 * 1000;
-        const out = await buildQuotaReport({ title: "Quota Weekly", sinceMs, untilMs, sessionID });
+        const out = await buildQuotaReport({
+          title: "Quota (/quota_weekly)",
+          sinceMs,
+          untilMs,
+          sessionID,
+        });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
       if (cmd === "quota_monthly") {
         const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
-        const out = await buildQuotaReport({ title: "Quota Monthly", sinceMs, untilMs, sessionID });
+        const out = await buildQuotaReport({
+          title: "Quota (/quota_monthly)",
+          sinceMs,
+          untilMs,
+          sessionID,
+        });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
       if (cmd === "quota_all") {
         const out = await buildQuotaReport({
-          title: "Quota All",
+          title: "Quota (/quota_all)",
           sessionID,
           topModels: 12,
           topSessions: 12,
@@ -706,16 +724,21 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const sinceMs = startOfDay.getTime();
         const untilMs = now.getTime();
-        const out = await buildQuotaReport({ title: "Quota Today", sinceMs, untilMs, sessionID });
+        const out = await buildQuotaReport({
+          title: "Quota (/quota_today)",
+          sinceMs,
+          untilMs,
+          sessionID,
+        });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
-      if (cmd === "quota_chat") {
+      if (cmd === "quota_session") {
         const out = await buildQuotaReport({
-          title: "Quota Chat",
+          title: "Quota (/quota_session)",
           sessionID,
           filterSessionID: sessionID,
-          topSessions: 1,
+          sessionOnly: true,
         });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
@@ -730,7 +753,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota Daily",
+            title: "Quota (/quota_daily)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
@@ -748,7 +771,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 7 * 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota Weekly",
+            title: "Quota (/quota_weekly)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
@@ -766,7 +789,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota Monthly",
+            title: "Quota (/quota_monthly)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
@@ -782,7 +805,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         args: {},
         async execute(_args, context) {
           const out = await buildQuotaReport({
-            title: "Quota All",
+            title: "Quota (/quota_all)",
             sessionID: context.sessionID,
             topModels: 12,
             topSessions: 12,
@@ -833,7 +856,7 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const sinceMs = startOfDay.getTime();
           const untilMs = now.getTime();
           const out = await buildQuotaReport({
-            title: "Quota Today",
+            title: "Quota (/quota_today)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
@@ -844,17 +867,17 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         },
       }),
 
-      quota_chat: tool({
+      quota_session: tool({
         description: "Token + official API cost summary for current session only.",
         args: {},
         async execute(_args, context) {
           const out = await buildQuotaReport({
-            title: "Quota Chat",
+            title: "Quota (/quota_session)",
             sessionID: context.sessionID,
             filterSessionID: context.sessionID,
-            topSessions: 1,
+            sessionOnly: true,
           });
-          context.metadata({ title: "Quota Chat" });
+          context.metadata({ title: "Quota Session" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },

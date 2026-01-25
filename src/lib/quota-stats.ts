@@ -380,3 +380,69 @@ export async function aggregateUsage(params: {
     unknown: unknownRows,
   };
 }
+
+/**
+ * Lightweight session token summary for toast display.
+ * Returns per-model input/output totals for a single session.
+ */
+export type SessionTokenRow = {
+  modelID: string;
+  input: number;
+  output: number;
+};
+
+export type SessionTokenSummary = {
+  sessionID: string;
+  models: SessionTokenRow[];
+  totalInput: number;
+  totalOutput: number;
+};
+
+export async function getSessionTokenSummary(
+  sessionID: string,
+): Promise<SessionTokenSummary | null> {
+  const messages = await iterAssistantMessages({});
+  const sessionMessages = messages.filter((m) => m.sessionID === sessionID);
+
+  if (sessionMessages.length === 0) return null;
+
+  const byModel = new Map<string, { input: number; output: number }>();
+  let totalInput = 0;
+  let totalOutput = 0;
+
+  for (const msg of sessionMessages) {
+    const tokens = msg.tokens;
+    if (!tokens) continue;
+
+    const input = typeof tokens.input === "number" ? tokens.input : 0;
+    const output = typeof tokens.output === "number" ? tokens.output : 0;
+
+    // Skip if both are 0
+    if (input === 0 && output === 0) continue;
+
+    totalInput += input;
+    totalOutput += output;
+
+    const modelID = msg.modelID ?? "unknown";
+    const existing = byModel.get(modelID);
+    if (existing) {
+      existing.input += input;
+      existing.output += output;
+    } else {
+      byModel.set(modelID, { input, output });
+    }
+  }
+
+  // Sort by total tokens descending
+  const models = Array.from(byModel.entries())
+    .map(([modelID, t]) => ({ modelID, input: t.input, output: t.output }))
+    .filter((m) => m.input > 0 || m.output > 0)
+    .sort((a, b) => b.input + b.output - (a.input + a.output));
+
+  return {
+    sessionID,
+    models,
+    totalInput,
+    totalOutput,
+  };
+}
