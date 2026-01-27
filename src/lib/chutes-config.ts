@@ -127,10 +127,10 @@ export function getOpencodeConfigCandidatePaths(): Array<{ path: string; isJsonc
   const configBaseDir = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 
   return [
-    { path: join(configBaseDir, "opencode", "opencode.jsonc"), isJsonc: true },
-    { path: join(configBaseDir, "opencode", "opencode.json"), isJsonc: false },
     { path: join(cwd, "opencode.jsonc"), isJsonc: true },
     { path: join(cwd, "opencode.json"), isJsonc: false },
+    { path: join(configBaseDir, "opencode", "opencode.jsonc"), isJsonc: true },
+    { path: join(configBaseDir, "opencode", "opencode.json"), isJsonc: false },
   ];
 }
 

@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { queryChutesQuota } from "../src/lib/chutes.js";
 
 // Mock auth reader
@@ -6,29 +9,29 @@ vi.mock("../src/lib/opencode-auth.js", () => ({
   readAuthFile: vi.fn(),
 }));
 
-// Mock config paths
-vi.mock("../src/lib/chutes-config.js", async (importOriginal) => {
-  const actual = await importOriginal<any>();
-  return {
-    ...actual,
-    getOpencodeConfigCandidatePaths: vi.fn(() => []),
-  };
-});
-
 describe("queryChutesQuota", () => {
+  const originalEnv = process.env;
+  const originalCwd = process.cwd();
+  let tempDir: string;
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
-    vi.stubGlobal("process", {
-      ...process,
-      env: { ...process.env },
-    });
+
+    tempDir = mkdtempSync(join(tmpdir(), "opencode-quota-chutes-"));
+    process.env = { ...originalEnv, XDG_CONFIG_HOME: tempDir };
+    process.chdir(tempDir);
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
+
+    process.chdir(originalCwd);
+    process.env = originalEnv;
+    rmSync(tempDir, { recursive: true, force: true });
+
+    vi.unstubAllGlobals();
   });
 
   it("returns null when not configured", async () => {

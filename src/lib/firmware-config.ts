@@ -136,13 +136,13 @@ export function getOpencodeConfigCandidatePaths(): Array<{ path: string; isJsonc
   const cwd = process.cwd();
   const configBaseDir = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 
-  // Order: global config first, then local overrides
+  // Order: local overrides first, then global fallback
   // Check both .json and .jsonc variants
   return [
-    { path: join(configBaseDir, "opencode", "opencode.jsonc"), isJsonc: true },
-    { path: join(configBaseDir, "opencode", "opencode.json"), isJsonc: false },
     { path: join(cwd, "opencode.jsonc"), isJsonc: true },
     { path: join(cwd, "opencode.json"), isJsonc: false },
+    { path: join(configBaseDir, "opencode", "opencode.jsonc"), isJsonc: true },
+    { path: join(configBaseDir, "opencode", "opencode.json"), isJsonc: false },
   ];
 }
 
