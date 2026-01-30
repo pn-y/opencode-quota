@@ -106,6 +106,161 @@ interface PluginConfigInput {
 }
 
 // =============================================================================
+// Token Report Command Specification
+// =============================================================================
+
+/** Parsed YYYY-MM-DD date components (module-level for use in command specs) */
+type Ymd = { y: number; m: number; d: number };
+
+/** Token report command IDs (new primary names) */
+type TokenReportCommandId =
+  | "tokens_today"
+  | "tokens_daily"
+  | "tokens_weekly"
+  | "tokens_monthly"
+  | "tokens_all"
+  | "tokens_session"
+  | "tokens_between";
+
+/** Legacy command IDs (backwards-compatible aliases) */
+type LegacyTokenCommandId =
+  | "quota_today"
+  | "quota_daily"
+  | "quota_weekly"
+  | "quota_monthly"
+  | "quota_all"
+  | "quota_session"
+  | "quota_between";
+
+/** Specification for a token report command */
+type TokenReportCommandSpec =
+  | {
+      id: Exclude<TokenReportCommandId, "tokens_between">;
+      legacyId: Exclude<LegacyTokenCommandId, "quota_between">;
+      template: `/${string}`;
+      legacyTemplate: `/${string}`;
+      description: string;
+      title: string;
+      metadataTitle: string;
+      kind: "rolling" | "today" | "all" | "session";
+      windowMs?: number;
+      topModels?: number;
+      topSessions?: number;
+    }
+  | {
+      id: "tokens_between";
+      legacyId: "quota_between";
+      template: "/tokens_between";
+      legacyTemplate: "/quota_between";
+      description: string;
+      titleForRange: (startYmd: Ymd, endYmd: Ymd) => string;
+      metadataTitle: string;
+      kind: "between";
+    };
+
+/** All token report command specifications */
+const TOKEN_REPORT_COMMANDS: readonly TokenReportCommandSpec[] = [
+  {
+    id: "tokens_today",
+    legacyId: "quota_today",
+    template: "/tokens_today",
+    legacyTemplate: "/quota_today",
+    description: "Token + official API cost summary for today (calendar day, local timezone).",
+    title: "Tokens used (Today) (/tokens_today)",
+    metadataTitle: "Tokens used (Today)",
+    kind: "today",
+  },
+  {
+    id: "tokens_daily",
+    legacyId: "quota_daily",
+    template: "/tokens_daily",
+    legacyTemplate: "/quota_daily",
+    description: "Token + official API cost summary for the last 24 hours (rolling).",
+    title: "Tokens used (Last 24 Hours) (/tokens_daily)",
+    metadataTitle: "Tokens used (Last 24 Hours)",
+    kind: "rolling",
+    windowMs: 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "tokens_weekly",
+    legacyId: "quota_weekly",
+    template: "/tokens_weekly",
+    legacyTemplate: "/quota_weekly",
+    description: "Token + official API cost summary for the last 7 days (rolling).",
+    title: "Tokens used (Last 7 Days) (/tokens_weekly)",
+    metadataTitle: "Tokens used (Last 7 Days)",
+    kind: "rolling",
+    windowMs: 7 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "tokens_monthly",
+    legacyId: "quota_monthly",
+    template: "/tokens_monthly",
+    legacyTemplate: "/quota_monthly",
+    description: "Token + official API cost summary for the last 30 days (rolling).",
+    title: "Tokens used (Last 30 Days) (/tokens_monthly)",
+    metadataTitle: "Tokens used (Last 30 Days)",
+    kind: "rolling",
+    windowMs: 30 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "tokens_all",
+    legacyId: "quota_all",
+    template: "/tokens_all",
+    legacyTemplate: "/quota_all",
+    description: "Token + official API cost summary for all locally saved OpenCode history.",
+    title: "Tokens used (All Time) (/tokens_all)",
+    metadataTitle: "Tokens used (All Time)",
+    kind: "all",
+    topModels: 12,
+    topSessions: 12,
+  },
+  {
+    id: "tokens_session",
+    legacyId: "quota_session",
+    template: "/tokens_session",
+    legacyTemplate: "/quota_session",
+    description: "Token + official API cost summary for current session only.",
+    title: "Tokens used (Current Session) (/tokens_session)",
+    metadataTitle: "Tokens used (Current Session)",
+    kind: "session",
+  },
+  {
+    id: "tokens_between",
+    legacyId: "quota_between",
+    template: "/tokens_between",
+    legacyTemplate: "/quota_between",
+    description: "Token + cost report between two YYYY-MM-DD dates (local timezone, inclusive).",
+    titleForRange: (startYmd: Ymd, endYmd: Ymd) => {
+      const formatYmd = (ymd: Ymd) => {
+        const y = String(ymd.y).padStart(4, "0");
+        const m = String(ymd.m).padStart(2, "0");
+        const d = String(ymd.d).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      };
+      return `Tokens used (${formatYmd(startYmd)} .. ${formatYmd(endYmd)}) (/tokens_between)`;
+    },
+    metadataTitle: "Tokens used (Date Range)",
+    kind: "between",
+  },
+] as const;
+
+/** Build a lookup map from command ID (both new and legacy) to spec */
+const TOKEN_REPORT_COMMANDS_BY_ID: ReadonlyMap<string, TokenReportCommandSpec> = (() => {
+  const map = new Map<string, TokenReportCommandSpec>();
+  for (const spec of TOKEN_REPORT_COMMANDS) {
+    map.set(spec.id, spec);
+    map.set(spec.legacyId, spec);
+  }
+  return map;
+})();
+
+/** Check if a command is a token report command */
+function isTokenReportCommand(cmd: string): cmd is TokenReportCommandId | LegacyTokenCommandId {
+  return TOKEN_REPORT_COMMANDS_BY_ID.has(cmd);
+}
+
+// =============================================================================
 // Plugin Implementation
 // =============================================================================
 
@@ -189,6 +344,111 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     } catch {
       return { ok: false, error: "Failed to parse JSON arguments." };
     }
+  }
+
+  /**
+   * Parse a YYYY-MM-DD string. Returns null if invalid format or invalid date.
+   */
+  function parseYyyyMmDd(input: string): Ymd | null {
+    const pattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!pattern.test(input)) return null;
+    const [yStr, mStr, dStr] = input.split("-");
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    const d = parseInt(dStr, 10);
+    // Validate by round-trip: construct a Date and check components match
+    const date = new Date(y, m - 1, d);
+    if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+      return null; // Invalid date (e.g., 2026-02-31)
+    }
+    return { y, m, d };
+  }
+
+  /**
+   * Get the start of a local day (midnight) in milliseconds.
+   */
+  function startOfLocalDayMs(ymd: Ymd): number {
+    return new Date(ymd.y, ymd.m - 1, ymd.d).getTime();
+  }
+
+  /**
+   * Get the start of the next local day (midnight of the following day) in milliseconds.
+   * Used for inclusive end date: untilMs = startOfNextLocalDayMs(end) (exclusive upper bound).
+   */
+  function startOfNextLocalDayMs(ymd: Ymd): number {
+    return new Date(ymd.y, ymd.m - 1, ymd.d + 1).getTime();
+  }
+
+  /**
+   * Parse /quota_between arguments. Supports:
+   * - Positional: "2026-01-01 2026-01-15"
+   * - JSON: {"starting_date":"2026-01-01","ending_date":"2026-01-15"}
+   */
+  function parseQuotaBetweenArgs(
+    input: string | undefined,
+  ): { ok: true; startYmd: Ymd; endYmd: Ymd } | { ok: false; error: string } {
+    const raw = input?.trim() || "";
+    if (!raw) {
+      return {
+        ok: false,
+        error: "Missing arguments. Expected two dates in YYYY-MM-DD format.",
+      };
+    }
+
+    let startStr: string;
+    let endStr: string;
+
+    if (raw.startsWith("{")) {
+      // JSON format
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        startStr = String(parsed["starting_date"] ?? parsed["startingDate"] ?? "");
+        endStr = String(parsed["ending_date"] ?? parsed["endingDate"] ?? "");
+      } catch {
+        return { ok: false, error: "Failed to parse JSON arguments." };
+      }
+    } else {
+      // Positional format: split on whitespace
+      const parts = raw.split(/\s+/);
+      if (parts.length !== 2) {
+        return {
+          ok: false,
+          error: "Expected exactly two dates in YYYY-MM-DD format.",
+        };
+      }
+      [startStr, endStr] = parts;
+    }
+
+    const startYmd = parseYyyyMmDd(startStr);
+    if (!startYmd) {
+      return { ok: false, error: `Invalid starting date: "${startStr}". Expected YYYY-MM-DD.` };
+    }
+    const endYmd = parseYyyyMmDd(endStr);
+    if (!endYmd) {
+      return { ok: false, error: `Invalid ending date: "${endStr}". Expected YYYY-MM-DD.` };
+    }
+
+    // Check end >= start
+    const startMs = startOfLocalDayMs(startYmd);
+    const endMs = startOfLocalDayMs(endYmd);
+    if (endMs < startMs) {
+      return {
+        ok: false,
+        error: `Ending date (${endStr}) is before starting date (${startStr}).`,
+      };
+    }
+
+    return { ok: true, startYmd, endYmd };
+  }
+
+  /**
+   * Format a Ymd as YYYY-MM-DD string.
+   */
+  function formatYmd(ymd: Ymd): string {
+    const y = String(ymd.y).padStart(4, "0");
+    const m = String(ymd.m).padStart(2, "0");
+    const d = String(ymd.d).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
   // Best-effort async init (do not await)
@@ -613,39 +873,30 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
     config: async (input: unknown) => {
       const cfg = input as PluginConfigInput;
       cfg.command ??= {};
+      // Non-token commands (quota toast and diagnostics)
       cfg.command["quota"] = {
         template: "/quota",
         description: "Show quota toast output in chat.",
-      };
-      cfg.command["quota_daily"] = {
-        template: "/quota_daily",
-        description: "Token + official API cost summary for the last 24 hours (rolling).",
-      };
-      cfg.command["quota_weekly"] = {
-        template: "/quota_weekly",
-        description: "Token + official API cost summary for the last 7 days (rolling).",
-      };
-      cfg.command["quota_monthly"] = {
-        template: "/quota_monthly",
-        description: "Token + official API cost summary for the last 30 days (rolling).",
-      };
-      cfg.command["quota_all"] = {
-        template: "/quota_all",
-        description: "Token + official API cost summary for all locally saved OpenCode history.",
       };
       cfg.command["quota_status"] = {
         template: "/quota_status",
         description:
           "Diagnostics for toast + pricing + local storage (includes unknown pricing report).",
       };
-      cfg.command["quota_today"] = {
-        template: "/quota_today",
-        description: "Token + official API cost summary for today (calendar day, local timezone).",
-      };
-      cfg.command["quota_session"] = {
-        template: "/quota_session",
-        description: "Token + official API cost summary for current session only.",
-      };
+
+      // Register token report commands (primary /tokens_* and legacy /quota_* aliases)
+      for (const spec of TOKEN_REPORT_COMMANDS) {
+        // Primary command (/tokens_*)
+        cfg.command[spec.id] = {
+          template: spec.template,
+          description: spec.description,
+        };
+        // Legacy alias (/quota_*) for backwards compatibility
+        cfg.command[spec.legacyId] = {
+          template: spec.legacyTemplate,
+          description: `${spec.description} (Legacy alias for /${spec.id})`,
+        };
+      }
     },
 
     "command.execute.before": async (input: CommandExecuteInput) => {
@@ -694,55 +945,81 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
       }
 
       const untilMs = Date.now();
-      if (cmd === "quota_daily") {
-        const sinceMs = untilMs - 24 * 60 * 60 * 1000;
+
+      // Handle token report commands generically (both /tokens_* and legacy /quota_* aliases)
+      if (isTokenReportCommand(cmd)) {
+        const spec = TOKEN_REPORT_COMMANDS_BY_ID.get(cmd)!;
+
+        if (spec.kind === "between") {
+          // Special handling for date range command
+          const parsed = parseQuotaBetweenArgs(input.arguments);
+          if (!parsed.ok) {
+            await injectRawOutput(
+              sessionID,
+              `Invalid arguments for /${spec.id}\n\n${parsed.error}\n\nExpected: /${spec.id} YYYY-MM-DD YYYY-MM-DD\nExample: /${spec.id} 2026-01-01 2026-01-15`,
+            );
+            throw new Error("__QUOTA_COMMAND_HANDLED__");
+          }
+          const sinceMs = startOfLocalDayMs(parsed.startYmd);
+          const rangeUntilMs = startOfNextLocalDayMs(parsed.endYmd); // Exclusive upper bound for inclusive end date
+          const out = await buildQuotaReport({
+            title: spec.titleForRange(parsed.startYmd, parsed.endYmd),
+            sinceMs,
+            untilMs: rangeUntilMs,
+            sessionID,
+          });
+          await injectRawOutput(sessionID, out);
+          throw new Error("__QUOTA_COMMAND_HANDLED__");
+        }
+
+        // Non-between token report commands
+        let sinceMs: number | undefined;
+        let filterSessionID: string | undefined;
+        let sessionOnly: boolean | undefined;
+        let topModels: number | undefined;
+        let topSessions: number | undefined;
+
+        switch (spec.kind) {
+          case "rolling":
+            sinceMs = untilMs - spec.windowMs!;
+            break;
+          case "today": {
+            const now = new Date();
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            sinceMs = startOfDay.getTime();
+            break;
+          }
+          case "session":
+            filterSessionID = sessionID;
+            sessionOnly = true;
+            break;
+          case "all":
+            topModels = spec.topModels;
+            topSessions = spec.topSessions;
+            break;
+        }
+
         const out = await buildQuotaReport({
-          title: "Quota (/quota_daily)",
+          title: spec.title,
           sinceMs,
-          untilMs,
+          untilMs: spec.kind === "rolling" || spec.kind === "today" ? untilMs : undefined,
           sessionID,
+          filterSessionID,
+          sessionOnly,
+          topModels,
+          topSessions,
         });
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
-      if (cmd === "quota_weekly") {
-        const sinceMs = untilMs - 7 * 24 * 60 * 60 * 1000;
-        const out = await buildQuotaReport({
-          title: "Quota (/quota_weekly)",
-          sinceMs,
-          untilMs,
-          sessionID,
-        });
-        await injectRawOutput(sessionID, out);
-        throw new Error("__QUOTA_COMMAND_HANDLED__");
-      }
-      if (cmd === "quota_monthly") {
-        const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
-        const out = await buildQuotaReport({
-          title: "Quota (/quota_monthly)",
-          sinceMs,
-          untilMs,
-          sessionID,
-        });
-        await injectRawOutput(sessionID, out);
-        throw new Error("__QUOTA_COMMAND_HANDLED__");
-      }
-      if (cmd === "quota_all") {
-        const out = await buildQuotaReport({
-          title: "Quota (/quota_all)",
-          sessionID,
-          topModels: 12,
-          topSessions: 12,
-        });
-        await injectRawOutput(sessionID, out);
-        throw new Error("__QUOTA_COMMAND_HANDLED__");
-      }
+
+      // Handle /quota_status (diagnostics - not a token report)
       if (cmd === "quota_status") {
         const parsed = parseOptionalJsonArgs(input.arguments);
         if (!parsed.ok) {
           await injectRawOutput(
             sessionID,
-            `Invalid arguments for /quota_status\n\n${parsed.error}\n\nExample:\n/quota_status {\"refreshGoogleTokens\": true}`,
+            `Invalid arguments for /quota_status\n\n${parsed.error}\n\nExample:\n/quota_status {"refreshGoogleTokens": true}`,
           );
           throw new Error("__QUOTA_COMMAND_HANDLED__");
         }
@@ -758,31 +1035,6 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         await injectRawOutput(sessionID, out);
         throw new Error("__QUOTA_COMMAND_HANDLED__");
       }
-      if (cmd === "quota_today") {
-        // Calendar day in local timezone: midnight to now
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const sinceMs = startOfDay.getTime();
-        const untilMs = now.getTime();
-        const out = await buildQuotaReport({
-          title: "Quota (/quota_today)",
-          sinceMs,
-          untilMs,
-          sessionID,
-        });
-        await injectRawOutput(sessionID, out);
-        throw new Error("__QUOTA_COMMAND_HANDLED__");
-      }
-      if (cmd === "quota_session") {
-        const out = await buildQuotaReport({
-          title: "Quota (/quota_session)",
-          sessionID,
-          filterSessionID: sessionID,
-          sessionOnly: true,
-        });
-        await injectRawOutput(sessionID, out);
-        throw new Error("__QUOTA_COMMAND_HANDLED__");
-      }
     },
 
     tool: {
@@ -793,12 +1045,12 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota (/quota_daily)",
+            title: "Tokens used (Last 24 Hours) (/tokens_daily)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
           });
-          context.metadata({ title: "Quota Daily" });
+          context.metadata({ title: "Tokens used (Last 24 Hours)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },
@@ -811,12 +1063,12 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 7 * 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota (/quota_weekly)",
+            title: "Tokens used (Last 7 Days) (/tokens_weekly)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
           });
-          context.metadata({ title: "Quota Weekly" });
+          context.metadata({ title: "Tokens used (Last 7 Days)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },
@@ -829,12 +1081,12 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const untilMs = Date.now();
           const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
           const out = await buildQuotaReport({
-            title: "Quota (/quota_monthly)",
+            title: "Tokens used (Last 30 Days) (/tokens_monthly)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
           });
-          context.metadata({ title: "Quota Monthly" });
+          context.metadata({ title: "Tokens used (Last 30 Days)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },
@@ -845,12 +1097,12 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         args: {},
         async execute(_args, context) {
           const out = await buildQuotaReport({
-            title: "Quota (/quota_all)",
+            title: "Tokens used (All Time) (/tokens_all)",
             sessionID: context.sessionID,
             topModels: 12,
             topSessions: 12,
           });
-          context.metadata({ title: "Quota All" });
+          context.metadata({ title: "Tokens used (All Time)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },
@@ -896,12 +1148,12 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
           const sinceMs = startOfDay.getTime();
           const untilMs = now.getTime();
           const out = await buildQuotaReport({
-            title: "Quota (/quota_today)",
+            title: "Tokens used (Today) (/tokens_today)",
             sinceMs,
             untilMs,
             sessionID: context.sessionID,
           });
-          context.metadata({ title: "Quota Today" });
+          context.metadata({ title: "Tokens used (Today)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },
@@ -912,12 +1164,67 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
         args: {},
         async execute(_args, context) {
           const out = await buildQuotaReport({
-            title: "Quota (/quota_session)",
+            title: "Tokens used (Current Session) (/tokens_session)",
             sessionID: context.sessionID,
             filterSessionID: context.sessionID,
             sessionOnly: true,
           });
-          context.metadata({ title: "Quota Session" });
+          context.metadata({ title: "Tokens used (Current Session)" });
+          await injectRawOutput(context.sessionID, out);
+          return ""; // Empty return - output already injected with noReply
+        },
+      }),
+
+      quota_between: tool({
+        description:
+          "Token + official API cost summary between two YYYY-MM-DD dates (local timezone, inclusive).",
+        args: {
+          startingDate: tool.schema
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .describe("Starting date in YYYY-MM-DD format (local timezone)"),
+          endingDate: tool.schema
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .describe("Ending date in YYYY-MM-DD format (local timezone, inclusive)"),
+        },
+        async execute(args, context) {
+          const startYmd = parseYyyyMmDd(args.startingDate);
+          if (!startYmd) {
+            await injectRawOutput(
+              context.sessionID,
+              `Invalid starting date: "${args.startingDate}". Expected YYYY-MM-DD.`,
+            );
+            return "";
+          }
+          const endYmd = parseYyyyMmDd(args.endingDate);
+          if (!endYmd) {
+            await injectRawOutput(
+              context.sessionID,
+              `Invalid ending date: "${args.endingDate}". Expected YYYY-MM-DD.`,
+            );
+            return "";
+          }
+          const startMs = startOfLocalDayMs(startYmd);
+          const endMs = startOfLocalDayMs(endYmd);
+          if (endMs < startMs) {
+            await injectRawOutput(
+              context.sessionID,
+              `Ending date (${args.endingDate}) is before starting date (${args.startingDate}).`,
+            );
+            return "";
+          }
+          const sinceMs = startMs;
+          const untilMs = startOfNextLocalDayMs(endYmd); // Exclusive upper bound for inclusive end date
+          const startStr = formatYmd(startYmd);
+          const endStr = formatYmd(endYmd);
+          const out = await buildQuotaReport({
+            title: `Tokens used (${startStr} .. ${endStr}) (/tokens_between)`,
+            sinceMs,
+            untilMs,
+            sessionID: context.sessionID,
+          });
+          context.metadata({ title: "Tokens used (Date Range)" });
           await injectRawOutput(context.sessionID, out);
           return ""; // Empty return - output already injected with noReply
         },

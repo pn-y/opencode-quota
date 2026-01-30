@@ -40,16 +40,36 @@ That's it. Toasts appear automatically after main agent responses.
 
 ## Commands
 
-| Command          | Description                                 |
-| ---------------- | ------------------------------------------- |
-| `/quota`         | Show current quota (verbose)                |
-| `/quota_today`   | Token + cost report (today, local timezone) |
-| `/quota_daily`   | Token + cost report (last 24 hours)         |
-| `/quota_weekly`  | Token + cost report (last 7 days)           |
-| `/quota_monthly` | Token + cost report (last 30 days)          |
-| `/quota_all`     | Token + cost report (all history)           |
-| `/quota_session` | Token + cost report (current session only)  |
-| `/quota_status`  | Diagnostics (config, paths, pricing)        |
+### Token Reports
+
+| Command           | Title                                                    |
+| ----------------- | -------------------------------------------------------- |
+| `/tokens_today`   | Tokens used (Today) (/tokens_today)                      |
+| `/tokens_daily`   | Tokens used (Last 24 Hours) (/tokens_daily)              |
+| `/tokens_weekly`  | Tokens used (Last 7 Days) (/tokens_weekly)               |
+| `/tokens_monthly` | Tokens used (Last 30 Days) (/tokens_monthly)             |
+| `/tokens_all`     | Tokens used (All Time) (/tokens_all)                     |
+| `/tokens_session` | Tokens used (Current Session) (/tokens_session)          |
+| `/tokens_between` | Tokens used (YYYY-MM-DD .. YYYY-MM-DD) (/tokens_between) |
+
+### Quota Toast & Diagnostics
+
+| Command         | Title                             |
+| --------------- | --------------------------------- |
+| `/quota`        | Quota Toast (Verbose) (/quota)    |
+| `/quota_status` | Quota Diagnostics (/quota_status) |
+
+### Legacy Aliases
+
+The following `/quota_*` commands remain as backwards-compatible aliases:
+
+- `/quota_today` -> `/tokens_today`
+- `/quota_daily` -> `/tokens_daily`
+- `/quota_weekly` -> `/tokens_weekly`
+- `/quota_monthly` -> `/tokens_monthly`
+- `/quota_all` -> `/tokens_all`
+- `/quota_session` -> `/tokens_session`
+- `/quota_between` -> `/tokens_between`
 
 ## Supported Providers
 
