@@ -11,6 +11,11 @@ export type CostBuckets = {
   reasoning?: number;
 };
 
+export type PricingSourceConfig = {
+  pricingSource?: "bundled" | "network";
+  pricingUrl?: string;
+};
+
 type Snapshot = {
   _meta: {
     source: string;
@@ -57,6 +62,27 @@ function getSnapshotCachePath(): string {
   return join(getCacheBaseDir(), "opencode-quota", "modelsdev-pricing.json");
 }
 
+function resolvePricingConfig(config?: PricingSourceConfig): {
+  source: "bundled" | "network";
+  url: string;
+} {
+  const source =
+    config?.pricingSource === "bundled" || config?.pricingSource === "network"
+      ? config.pricingSource
+      : "network";
+
+  const rawUrl = typeof config?.pricingUrl === "string" ? config.pricingUrl.trim() : "";
+  if (rawUrl) {
+    try {
+      return { source, url: new URL(rawUrl).toString() };
+    } catch {
+      return { source, url: MODELSDEV_API_URL };
+    }
+  }
+
+  return { source, url: MODELSDEV_API_URL };
+}
+
 function readSnapshotFromFile(pathOrUrl: string | URL): Snapshot | null {
   try {
     const raw = readFileSync(pathOrUrl, "utf-8");
@@ -68,7 +94,7 @@ function readSnapshotFromFile(pathOrUrl: string | URL): Snapshot | null {
   }
 }
 
-function buildSnapshotFromApi(payload: unknown): Snapshot | null {
+function buildSnapshotFromApi(payload: unknown, sourceUrl: string): Snapshot | null {
   if (!isRecord(payload)) return null;
 
   const providers: Record<string, Record<string, CostBuckets>> = {};
@@ -102,7 +128,7 @@ function buildSnapshotFromApi(payload: unknown): Snapshot | null {
 
   return {
     _meta: {
-      source: MODELSDEV_API_URL,
+      source: sourceUrl,
       generatedAt: Date.now(),
       providers: providerList,
       units: "USD per 1M tokens",
@@ -111,23 +137,24 @@ function buildSnapshotFromApi(payload: unknown): Snapshot | null {
   };
 }
 
-function shouldRefresh(snapshot: Snapshot | null): boolean {
+function shouldRefresh(snapshot: Snapshot | null, sourceUrl: string): boolean {
   if (!snapshot) return true;
   if (typeof snapshot._meta.generatedAt !== "number") return true;
+  if (snapshot._meta.source !== sourceUrl) return true;
   return Date.now() - snapshot._meta.generatedAt > MODELSDEV_CACHE_TTL_MS;
 }
 
-async function refreshSnapshotFromModelsDev(): Promise<void> {
+async function refreshSnapshotFromModelsDev(sourceUrl: string): Promise<void> {
   if (REFRESH_IN_FLIGHT) return REFRESH_IN_FLIGHT;
 
   REFRESH_IN_FLIGHT = (async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), MODELSDEV_REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(MODELSDEV_API_URL, { signal: controller.signal });
+      const response = await fetch(sourceUrl, { signal: controller.signal });
       if (!response.ok) return;
       const payload = (await response.json()) as unknown;
-      const snapshot = buildSnapshotFromApi(payload);
+      const snapshot = buildSnapshotFromApi(payload, sourceUrl);
       if (!snapshot) return;
       const path = getSnapshotCachePath();
       await mkdir(dirname(path), { recursive: true });
@@ -147,16 +174,14 @@ async function refreshSnapshotFromModelsDev(): Promise<void> {
 function ensureLoaded(): Snapshot {
   if (SNAPSHOT) return SNAPSHOT;
 
-  const cached = readSnapshotFromFile(getSnapshotCachePath());
-  if (cached) {
-    SNAPSHOT = cached;
-  } else {
-    const url = new URL("../data/modelsdev-pricing.min.json", import.meta.url);
-    const bundled = readSnapshotFromFile(url);
-    if (bundled) {
-      SNAPSHOT = bundled;
-    } else {
-      SNAPSHOT = {
+  const { source, url } = resolvePricingConfig();
+
+  if (source === "bundled") {
+    const bundledUrl = new URL("../data/modelsdev-pricing.min.json", import.meta.url);
+    const bundled = readSnapshotFromFile(bundledUrl);
+    SNAPSHOT =
+      bundled ??
+      ({
         _meta: {
           source: "(unknown)",
           generatedAt: 0,
@@ -164,37 +189,110 @@ function ensureLoaded(): Snapshot {
           units: "USD per 1M tokens",
         },
         providers: {},
-      };
-    }
+      } satisfies Snapshot);
+    return SNAPSHOT;
   }
 
-  if (shouldRefresh(SNAPSHOT)) {
-    void refreshSnapshotFromModelsDev();
+  const cached = readSnapshotFromFile(getSnapshotCachePath());
+  if (cached) {
+    SNAPSHOT = cached;
+  } else {
+    const bundledUrl = new URL("../data/modelsdev-pricing.min.json", import.meta.url);
+    const bundled = readSnapshotFromFile(bundledUrl);
+    SNAPSHOT =
+      bundled ??
+      ({
+        _meta: {
+          source: "(unknown)",
+          generatedAt: 0,
+          providers: [],
+          units: "USD per 1M tokens",
+        },
+        providers: {},
+      } satisfies Snapshot);
+  }
+
+  if (shouldRefresh(SNAPSHOT, url)) {
+    void refreshSnapshotFromModelsDev(url);
   }
 
   return SNAPSHOT;
 }
 
-export function getPricingSnapshotMeta(): Snapshot["_meta"] {
-  return ensureLoaded()._meta;
+export function getPricingSnapshotMeta(config?: PricingSourceConfig): Snapshot["_meta"] {
+  return ensureLoadedWithConfig(config)._meta;
 }
 
-export function hasProvider(providerId: string): boolean {
-  return !!ensureLoaded().providers[providerId];
+export function hasProvider(providerId: string, config?: PricingSourceConfig): boolean {
+  return !!ensureLoadedWithConfig(config).providers[providerId];
 }
 
-export function getProviderModelCount(providerId: string): number {
-  return Object.keys(ensureLoaded().providers[providerId] || {}).length;
+export function getProviderModelCount(providerId: string, config?: PricingSourceConfig): number {
+  return Object.keys(ensureLoadedWithConfig(config).providers[providerId] || {}).length;
 }
 
-export function listProviders(): string[] {
-  return Object.keys(ensureLoaded().providers);
+export function listProviders(config?: PricingSourceConfig): string[] {
+  return Object.keys(ensureLoadedWithConfig(config).providers);
 }
 
-export function lookupCost(providerId: string, modelId: string): CostBuckets | null {
-  const p = ensureLoaded().providers[providerId];
+export function lookupCost(
+  providerId: string,
+  modelId: string,
+  config?: PricingSourceConfig,
+): CostBuckets | null {
+  const p = ensureLoadedWithConfig(config).providers[providerId];
   if (!p) return null;
   const c = p[modelId];
   if (!c) return null;
   return c;
+}
+
+function ensureLoadedWithConfig(config?: PricingSourceConfig): Snapshot {
+  if (!config) return ensureLoaded();
+
+  const { source, url } = resolvePricingConfig(config);
+
+  if (source === "bundled") {
+    const bundledUrl = new URL("../data/modelsdev-pricing.min.json", import.meta.url);
+    const bundled = readSnapshotFromFile(bundledUrl);
+    return (
+      bundled ?? {
+        _meta: {
+          source: "(unknown)",
+          generatedAt: 0,
+          providers: [],
+          units: "USD per 1M tokens",
+        },
+        providers: {},
+      }
+    );
+  }
+
+  const cached = readSnapshotFromFile(getSnapshotCachePath());
+  if (cached) {
+    if (shouldRefresh(cached, url)) {
+      void refreshSnapshotFromModelsDev(url);
+    }
+    return cached;
+  }
+
+  const bundledUrl = new URL("../data/modelsdev-pricing.min.json", import.meta.url);
+  const bundled = readSnapshotFromFile(bundledUrl);
+  const fallback =
+    bundled ??
+    ({
+      _meta: {
+        source: "(unknown)",
+        generatedAt: 0,
+        providers: [],
+        units: "USD per 1M tokens",
+      },
+      providers: {},
+    } satisfies Snapshot);
+
+  if (shouldRefresh(fallback, url)) {
+    void refreshSnapshotFromModelsDev(url);
+  }
+
+  return fallback;
 }

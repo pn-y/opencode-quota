@@ -1,6 +1,6 @@
 import type { OpenCodeMessage } from "./opencode-storage.js";
 import { iterAssistantMessages, readAllSessionsIndex } from "./opencode-storage.js";
-import { lookupCost } from "./modelsdev-pricing.js";
+import { lookupCost, type PricingSourceConfig } from "./modelsdev-pricing.js";
 
 export type TokenBuckets = {
   input: number;
@@ -131,10 +131,13 @@ function inferOfficialProviderFromModelId(modelId: string): string | null {
   return null;
 }
 
-function mapToOfficialPricingKey(source: {
-  providerID?: string;
-  modelID?: string;
-}): { ok: true; key: PricedKey } | { ok: false; unknown: UnknownKey } {
+function mapToOfficialPricingKey(
+  source: {
+    providerID?: string;
+    modelID?: string;
+  },
+  pricing?: PricingSourceConfig,
+): { ok: true; key: PricedKey } | { ok: false; unknown: UnknownKey } {
   const srcProvider = source.providerID ?? "unknown";
   const srcModel = source.modelID ?? "unknown";
 
@@ -160,7 +163,7 @@ function mapToOfficialPricingKey(source: {
   // Treat kimi-k2 as kimi-k2-thinking for pricing.
   if (inferredProvider === "moonshotai") {
     if (normalizedModel === "kimi-k2") {
-      if (lookupCost("moonshotai", "kimi-k2-thinking")) {
+      if (lookupCost("moonshotai", "kimi-k2-thinking", pricing)) {
         return { ok: true, key: { provider: "moonshotai", model: "kimi-k2-thinking" } };
       }
     }
@@ -168,13 +171,19 @@ function mapToOfficialPricingKey(source: {
 
   // Gemini naming fallback: some logs omit -preview
   if (inferredProvider === "google") {
-    if (normalizedModel === "gemini-3-pro" && lookupCost("google", "gemini-3-pro") == null) {
-      if (lookupCost("google", "gemini-3-pro-preview")) {
+    if (
+      normalizedModel === "gemini-3-pro" &&
+      lookupCost("google", "gemini-3-pro", pricing) == null
+    ) {
+      if (lookupCost("google", "gemini-3-pro-preview", pricing)) {
         return { ok: true, key: { provider: "google", model: "gemini-3-pro-preview" } };
       }
     }
-    if (normalizedModel === "gemini-3-flash" && lookupCost("google", "gemini-3-flash") == null) {
-      if (lookupCost("google", "gemini-3-flash-preview")) {
+    if (
+      normalizedModel === "gemini-3-flash" &&
+      lookupCost("google", "gemini-3-flash", pricing) == null
+    ) {
+      if (lookupCost("google", "gemini-3-flash-preview", pricing)) {
         return { ok: true, key: { provider: "google", model: "gemini-3-flash-preview" } };
       }
     }
@@ -183,12 +192,15 @@ function mapToOfficialPricingKey(source: {
   return { ok: true, key: { provider: inferredProvider, model: normalizedModel } };
 }
 
-function calculateCostUsd(params: {
-  provider: string;
-  model: string;
-  tokens: TokenBuckets;
-}): { ok: true; costUsd: number } | { ok: false } {
-  const cost = lookupCost(params.provider, params.model);
+function calculateCostUsd(
+  params: {
+    provider: string;
+    model: string;
+    tokens: TokenBuckets;
+  },
+  pricing?: PricingSourceConfig,
+): { ok: true; costUsd: number } | { ok: false } {
+  const cost = lookupCost(params.provider, params.model, pricing);
   if (!cost) return { ok: false };
 
   // models.dev costs are USD per 1M tokens
@@ -213,6 +225,7 @@ export async function aggregateUsage(params: {
   sinceMs?: number;
   untilMs?: number;
   sessionID?: string;
+  pricing?: PricingSourceConfig;
 }): Promise<AggregateResult> {
   let messages = await iterAssistantMessages({ sinceMs: params.sinceMs, untilMs: params.untilMs });
   if (params.sessionID) {
@@ -232,7 +245,10 @@ export async function aggregateUsage(params: {
 
   for (const msg of messages) {
     const tokens = messageBuckets(msg);
-    const mapping = mapToOfficialPricingKey({ providerID: msg.providerID, modelID: msg.modelID });
+    const mapping = mapToOfficialPricingKey(
+      { providerID: msg.providerID, modelID: msg.modelID },
+      params.pricing,
+    );
 
     if (!mapping.ok) {
       unknownTotals = addBuckets(unknownTotals, tokens);
@@ -247,11 +263,14 @@ export async function aggregateUsage(params: {
       continue;
     }
 
-    const priced = calculateCostUsd({
-      provider: mapping.key.provider,
-      model: mapping.key.model,
-      tokens,
-    });
+    const priced = calculateCostUsd(
+      {
+        provider: mapping.key.provider,
+        model: mapping.key.model,
+        tokens,
+      },
+      params.pricing,
+    );
     if (!priced.ok) {
       // Mapping succeeded but pricing missing.
       unknownTotals = addBuckets(unknownTotals, tokens);

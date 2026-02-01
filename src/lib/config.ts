@@ -105,6 +105,14 @@ export async function loadConfig(
         typeof quotaToastConfig.showSessionTokens === "boolean"
           ? quotaToastConfig.showSessionTokens
           : DEFAULT_CONFIG.showSessionTokens,
+      pricingSource:
+        quotaToastConfig.pricingSource === "bundled" || quotaToastConfig.pricingSource === "network"
+          ? quotaToastConfig.pricingSource
+          : DEFAULT_CONFIG.pricingSource,
+      pricingUrl:
+        typeof quotaToastConfig.pricingUrl === "string" && quotaToastConfig.pricingUrl.trim()
+          ? quotaToastConfig.pricingUrl
+          : DEFAULT_CONFIG.pricingUrl,
       layout: {
         maxWidth:
           typeof quotaToastConfig.layout?.maxWidth === "number" &&

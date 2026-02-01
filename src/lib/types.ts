@@ -51,6 +51,11 @@ export interface QuotaToastConfig {
   /** If true, show per-model input/output token counts for current session */
   showSessionTokens: boolean;
 
+  /** Pricing snapshot source selection */
+  pricingSource: "bundled" | "network";
+  /** Optional override for pricing snapshot URL */
+  pricingUrl?: string;
+
   /** Responsive layout breakpoints */
   layout: {
     /** Default max width target for formatting */
@@ -85,6 +90,8 @@ export const DEFAULT_CONFIG: QuotaToastConfig = {
   toastDurationMs: 9000,
   onlyCurrentModel: false,
   showSessionTokens: true,
+  pricingSource: "bundled",
+  pricingUrl: "https://models.dev/api.json",
   layout: {
     maxWidth: 50,
     narrowAt: 42,

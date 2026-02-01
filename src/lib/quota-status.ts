@@ -11,6 +11,7 @@ import {
   getPricingSnapshotMeta,
   listProviders,
   getProviderModelCount,
+  type PricingSourceConfig,
 } from "./modelsdev-pricing.js";
 import {
   getOpenCodeMessageDir,
@@ -39,6 +40,7 @@ export async function buildQuotaStatusReport(params: {
   enabledProviders: string[];
   onlyCurrentModel: boolean;
   currentModel?: string;
+  pricing?: PricingSourceConfig;
   providerAvailability: Array<{
     id: string;
     enabled: boolean;
@@ -156,16 +158,16 @@ export async function buildQuotaStatusReport(params: {
   lines.push(`google accounts: count=${accountCount}`);
 
   // === pricing snapshot ===
-  const meta = getPricingSnapshotMeta();
+  const meta = getPricingSnapshotMeta(params.pricing);
   lines.push("");
   lines.push("pricing_snapshot:");
   lines.push(`- source: ${meta.source}`);
   lines.push(`- generatedAt: ${new Date(meta.generatedAt).toISOString()}`);
   lines.push(`- units: ${meta.units}`);
-  const providers = listProviders();
+  const providers = listProviders(params.pricing);
   lines.push(`- providers: ${providers.join(",")}`);
   for (const p of providers) {
-    lines.push(`  - ${p}: models=${fmtInt(getProviderModelCount(p))}`);
+    lines.push(`  - ${p}: models=${fmtInt(getProviderModelCount(p, params.pricing))}`);
   }
 
   // === storage scan ===

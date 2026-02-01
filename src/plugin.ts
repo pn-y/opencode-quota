@@ -795,6 +795,10 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
       sinceMs: params.sinceMs,
       untilMs: params.untilMs,
       sessionID: params.filterSessionID,
+      pricing: {
+        pricingSource: config.pricingSource,
+        pricingUrl: config.pricingUrl,
+      },
     });
     return formatQuotaStatsReport({
       title: params.title,
@@ -855,6 +859,10 @@ export const QuotaToastPlugin: Plugin = async ({ client }) => {
       enabledProviders: config.enabledProviders,
       onlyCurrentModel: config.onlyCurrentModel,
       currentModel,
+      pricing: {
+        pricingSource: config.pricingSource,
+        pricingUrl: config.pricingUrl,
+      },
       providerAvailability: availability,
       googleRefresh: refresh
         ? {
